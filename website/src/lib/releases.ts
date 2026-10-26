@@ -29,6 +29,36 @@ export interface Release {
 // Only stable releases belong here; publish pre-release notes on GitHub Releases.
 export const releases: Release[] = [
   {
+    version: 'v1.4.1',
+    date: '2026-10-26',
+    title: {
+      en: 'Registered database upgrades and recovery',
+      zh: '已登记数据库的升级与恢复',
+    },
+    summary: {
+      en: 'PowerContext 1.4.1 completes the reusable Server migration framework with source recognition, ordered schema and data transitions, recovery evidence and full readiness checks. Release acceptance tests the real 1.3.0 source against the exact target artifact.',
+      zh: 'PowerContext 1.4.1 完善可复用的 Server 迁移框架，提供来源识别、有序结构与数据转换、恢复证据和完整就绪校验。发布验收使用真实 1.3.0 来源与本次目标产物。',
+    },
+    changes: {
+      en: [
+        'Use db-migrate status, plan, apply and verify for registered Server storage. Exact source layouts, reviewed plans, maintenance locks and explicit backup policies guard schema and data transitions; incomplete validation cannot report full Server readiness.',
+        'Preserve registered source history and original recovery evidence across interrupted upgrades and idempotent retries. Startup validates authoritative records, search projections, embedding profiles and retained history before serving requests.',
+        'Display migration steps as v1_4_1_001 through v1_4_1_003 while preserving existing revision IDs and checksums. The 1.3.0 and 1.4.0 source bridges remain separate; registration does not certify every intermediate software release.',
+        'Require twelve installed-release upgrade combinations for 1.3.0 across SQLite, embedded seekDB and OceanBase, with vectors and Code enabled or disabled. The 1.4.0 bridge is outside this CI upgrade matrix. Failed, skipped or missing cases block publication; the support policy remains upgrade-required until acceptance is complete.',
+        'Stop writers and back up existing databases before maintenance. Drain unsupported queued or running 1.3.0 Dream tasks, preserve the historical embedding configuration, and follow the documented recovery procedure after interruption.',
+      ],
+      zh: [
+        '通过 db-migrate status、plan、apply、verify 维护已登记的 Server 存储。以精确来源结构、已审阅计划、维护锁和明确备份策略约束结构与数据转换；校验不完整时不能报告完整 Server 就绪。',
+        '中断升级和幂等重试保留已登记来源历史与原始恢复证据。启动前检查权威记录、搜索投影、向量配置和必留历史，再开放服务。',
+        '迁移步骤显示为 v1_4_1_001 至 v1_4_1_003，保留原有 revision ID 和校验和。1.3.0、1.4.0 来源桥接独立登记，不能据此推导所有中间软件版本均通过验收。',
+        '发布门禁验证真实 1.3.0 到目标产物的十二个组合，覆盖 SQLite、嵌入式 seekDB、OceanBase 及向量、Code 开关。1.4.0 桥接不纳入该 CI 升级矩阵。失败、跳过或证据缺失均阻止发布；验收完成前保留 upgrade-required 策略。',
+        '维护前停止写入并备份已有数据库，排空不兼容的 1.3.0 queued／running Dream 任务，保持历史向量配置；发生中断时遵循文档中的恢复流程。',
+      ],
+    },
+    installCommand: 'uv tool install --force "powercontext[cli,server]==1.4.1"',
+    githubUrl: 'https://github.com/oceanbase/powercontext/releases/tag/powercontext-v1.4.1',
+  },
+  {
     version: 'v1.4.0',
     date: '2026-10-19',
     title: {
