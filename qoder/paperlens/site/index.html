@@ -1,0 +1,142 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>知迹 PaperLens — 文献与笔记混合检索助手</title>
+<style>
+  :root { --fg:#1f2328; --muted:#57606a; --line:#d0d7de; --bg:#ffffff; --accent:#0b6e4f; --soft:#f6f8fa; }
+  * { box-sizing: border-box; }
+  body { margin:0; font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+         color:var(--fg); background:var(--bg); line-height:1.7; }
+  .wrap { max-width: 920px; margin: 0 auto; padding: 0 24px; }
+  header { border-bottom:1px solid var(--line); padding: 56px 0 40px; }
+  .tag { display:inline-block; font-size:13px; color:var(--accent); background:#e8f5ef;
+         border-radius:999px; padding:4px 12px; margin-bottom:16px; }
+  h1 { font-size: 40px; margin:0 0 12px; letter-spacing:-.5px; }
+  .sub { color:var(--muted); font-size:18px; margin:0; }
+  section { padding: 44px 0; border-bottom:1px solid var(--line); }
+  h2 { font-size:24px; margin:0 0 18px; }
+  h3 { font-size:17px; margin:24px 0 8px; }
+  p, li { color:var(--fg); }
+  ul { padding-left: 20px; }
+  .grid { display:grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap:16px; }
+  .card { border:1px solid var(--line); border-radius:12px; padding:18px; background:#fff; }
+  .card h3 { margin-top:0; }
+  code, pre { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; }
+  pre { background:var(--soft); border:1px solid var(--line); border-radius:10px;
+        padding:14px 16px; overflow:auto; font-size:13.5px; }
+  table { width:100%; border-collapse:collapse; font-size:15px; }
+  th, td { border:1px solid var(--line); padding:10px 12px; text-align:left; vertical-align:top; }
+  th { background:var(--soft); font-weight:600; }
+  .muted { color:var(--muted); font-size:14px; }
+  .shot { border:1px dashed var(--line); border-radius:12px; padding:28px; text-align:center;
+          color:var(--muted); background:var(--soft); margin-top:12px; }
+  footer { padding:36px 0 64px; color:var(--muted); font-size:14px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <span class="tag">Qoder × OceanBase 参赛作品</span>
+  <h1>知迹 PaperLens</h1>
+  <p class="sub">把论文和笔记导入 seekdb，用混合检索秒找段落；用 PowerContext 记住你的研究方向与进度，越用越懂你。</p>
+</header>
+
+<section>
+  <h2>解决的问题</h2>
+  <ul>
+    <li><strong>找不到</strong>：论文、课程笔记、实验记录散落在十几个文件夹，靠文件名检索，内容里的段落搜不到。</li>
+    <li><strong>搜不准</strong>：关键词搜不到"意思相近但用词不同"的段落（同义表述、中英混写）。</li>
+    <li><strong>重复说</strong>：每开一个新会话，都要重新告诉助手"我在研究什么、上次看到哪"。</li>
+  </ul>
+</section>
+
+<section>
+  <h2>核心功能</h2>
+  <div class="grid">
+    <div class="card"><h3>资料导入</h3><p>Markdown / txt 按段落切块写入 <code>chunks</code> 表，超长段落按句号再切，保留出处。</p></div>
+    <div class="card"><h3>混合检索</h3><p>全文（IK 分词）+ 向量余弦两路召回，RRF 融合排序，支持 topic 过滤。</p></div>
+    <div class="card"><h3>记忆复用</h3><p>研究方向与阅读进度写入 PowerContext scoped memory，检索时自动带上偏好加权。</p></div>
+    <div class="card"><h3>出处回查</h3><p>每条结果返回文档、标题、片段与命中来源（fulltext / vector / 两者）。</p></div>
+  </div>
+</section>
+
+<section>
+  <h2>技术结合</h2>
+  <table>
+    <tr><th>技术</th><th>在项目中的实际作用</th><th>可核对点</th></tr>
+    <tr>
+      <td><strong>seekdb</strong></td>
+      <td>唯一的数据存储与检索层：<code>chunks</code> 表同时建 <code>FULLTEXT(body) WITH PARSER ik</code> 与 <code>VECTOR(384)</code> 列，一次查询同时用到全文匹配、余弦距离与元数据过滤。</td>
+      <td><code>/search</code> 返回的 <code>via</code> 字段；服务端 SQL 日志</td>
+    </tr>
+    <tr>
+      <td><strong>PowerContext</strong></td>
+      <td>记忆层：<code>/memory/preference</code> 写入研究方向与进度，<code>/search</code> 每次先读回偏好并对命中主题加权。</td>
+      <td><code>/search</code> 返回的 <code>memory_used</code>、<code>preference</code> 字段</td>
+    </tr>
+    <tr>
+      <td><strong>Qoder</strong></td>
+      <td>承担需求拆解、代码生成、调试与网站生成；开发记录见仓库 <code>docs/qoder-dev-log.md</code>。</td>
+      <td>开发记录截图 + 账号 UID</td>
+    </tr>
+  </table>
+</section>
+
+<section>
+  <h2>运行方式</h2>
+  <pre>git clone &lt;仓库地址&gt; qoder-paperlens
+cd qoder-paperlens
+python -m venv .venv &amp;&amp; source .venv/bin/activate
+pip install -r requirements.txt
+
+# seekdb（二选一）
+docker run -d --name seekdb -p 2881:2881 oceanbase/seekdb:latest
+
+export SEEKD_DB_HOST=127.0.0.1 SEEKD_DB_PORT=2881 SEEKD_DB_USER=root
+export POWERCX_BASE_URL=http://127.0.0.1:8000
+
+python -m src.app --load-sample    # 导入示例资料
+python -m src.app                  # 启动 http://127.0.0.1:8077</pre>
+</section>
+
+<section>
+  <h2>验证样例</h2>
+  <h3>1. 写入偏好（PowerContext）</h3>
+  <pre>curl -X POST http://127.0.0.1:8077/memory/preference \
+  -H 'Content-Type: application/json' \
+  -d '{"topic":"混合检索","progress":"读到第 3 章"}'</pre>
+  <h3>2. 混合检索（seekdb + 记忆复用）</h3>
+  <pre>curl "http://127.0.0.1:8077/search?q=向量与全文怎么融合&top_k=3"</pre>
+  <p class="muted">预期：返回 3 条结果，<code>memory_used</code> 为 <code>true</code>，<code>preference.preferred_topic</code> 为「混合检索」，且 topic 命中的结果排名被提升。</p>
+  <h3>3. 依赖自检</h3>
+  <pre>curl http://127.0.0.1:8077/health
+# {"seekdb":{"ok":true,...},"powercontext":{"ok":true,...}}</pre>
+</section>
+
+<section>
+  <h2>演示</h2>
+  <div class="shot">截图 / 录屏占位：检索结果页、记忆写入前后对比</div>
+</section>
+
+<section>
+  <h2>代码与材料</h2>
+  <ul>
+    <li>代码仓库：<a href="#" id="repo-link">&lt;在此填写仓库地址&gt;</a></li>
+    <li>运行说明：仓库 <code>README.md</code></li>
+    <li>验证样例：仓库 <code>docs/verify.md</code></li>
+    <li>Qoder 开发记录：仓库 <code>docs/qoder-dev-log.md</code></li>
+    <li>Qoder 账号 UID：<strong>&lt;在此填写 UID&gt;</strong></li>
+  </ul>
+</section>
+
+<footer>
+  知迹 PaperLens · 使用 Qoder 开发，结合 seekdb 与 PowerContext · 本站通过 Qoder Sites 发布
+</footer>
+
+</div>
+</body>
+</html>
