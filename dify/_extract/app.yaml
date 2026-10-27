@@ -1,0 +1,293 @@
+app:
+  description: ''
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  mode: advanced-chat
+  name: 记忆酒馆
+  use_icon_as_answer_icon: false
+dependencies: []
+kind: app
+site:
+  chat_color_theme: null
+  chat_color_theme_inverted: false
+  copyright: null
+  custom_disclaimer: ''
+  default_language: zh-Hans
+  description: null
+  icon: 🤖
+  icon_background: '#FFEAD5'
+  icon_type: emoji
+  input_placeholder: null
+  privacy_policy: null
+  show_workflow_steps: true
+  title: 记忆酒馆
+  use_icon_as_answer_icon: false
+version: 0.7.0
+workflow:
+  conversation_variables: []
+  environment_variables: []
+  features:
+    file_upload: {}
+    opening_statement: ''
+    retriever_resource:
+      enabled: true
+    sensitive_word_avoidance:
+      enabled: false
+    speech_to_text:
+      enabled: false
+    suggested_questions: []
+    suggested_questions_after_answer:
+      enabled: false
+    text_to_speech:
+      enabled: false
+      language: ''
+      voice: ''
+  graph:
+    edges:
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: start
+        targetType: http-request
+      id: 1793111843391-source-1793112091765-target
+      source: '1793111843391'
+      sourceHandle: source
+      target: '1793112091765'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: code
+      id: 1793112091765-source-1793112592482-target
+      source: '1793112091765'
+      sourceHandle: source
+      target: '1793112592482'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: code
+        targetType: http-request
+      id: 1793112592482-source-1793113431851-target
+      source: '1793112592482'
+      sourceHandle: source
+      target: '1793113431851'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    - data:
+        isInIteration: false
+        isInLoop: false
+        sourceType: http-request
+        targetType: answer
+      id: 1793113431851-source-1793114426822-target
+      source: '1793113431851'
+      sourceHandle: source
+      target: '1793114426822'
+      targetHandle: target
+      type: custom
+      zIndex: 0
+    nodes:
+    - data:
+        selected: false
+        title: 用户输入
+        type: start
+        variables: []
+      height: 72
+      id: '1793111843391'
+      position:
+        x: 80
+        y: 282
+      positionAbsolute:
+        x: 80
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: key-value-184
+            key: ''
+            type: text
+            value: "{\n  \"scope_id\": \"scp_30428ka4zqmfpa7ha96x41008y\"\n}"
+          type: json
+        headers: Content-Type:application/json
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: list_memory
+        type: http-request
+        url: http://host.docker.internal:8000/v1/memory/entries/list
+        variables: []
+      height: 137
+      id: '1793112091765'
+      position:
+        x: 380.01504924256517
+        y: 282
+      positionAbsolute:
+        x: 380.01504924256517
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        code: "import json\n\n\ndef main(action: str, memory: str) -> dict:\n    deeds\
+          \ = []\n    try:\n        data = json.loads(memory) if isinstance(memory,\
+          \ str) else (memory or {})\n        entries = data.get(\"entries\") or data.get(\"\
+          hits\") or []\n        for hit in entries:\n            text = hit.get(\"\
+          text\") or \"\"\n            if text.startswith(\"deed:\"):\n          \
+          \      deeds.append(text.split(\":\", 1)[1].strip())\n    except Exception:\n\
+          \        deeds = []\n\n    act = (action or \"\").strip()\n\n    if any(k\
+          \ in act for k in [\"酒\", \"喝\", \"杯\"]):\n        deed = \"点了一杯酒\"\n  \
+          \      line = \"老板擦着杯子：「来了？还是老样子。」\"\n    elif any(k in act for k in [\"\
+          打\", \"砸\", \"掀\", \"闹\"]):\n        deed = \"在店里闹事\"\n        line = \"\
+          老板眯起眼：「又来？上次的账还没结。」\"\n    elif any(k in act for k in [\"钱\", \"赔\", \"\
+          还\"]):\n        deed = \"提到赔钱\"\n        line = \"老板哼了一声：「算你还有点良心。」\"\n\
+          \    elif any(k in act for k in [\"走\", \"再见\", \"离开\"]):\n        deed\
+          \ = \"准备离开\"\n        line = \"老板头也不抬：「下次记得带钱。」\"\n    else:\n        deed\
+          \ = \"说了一句「\" + act[:40] + \"」\"\n        line = \"老板抬眼看了看你，没接话。\"\n\n \
+          \   history_hint = \"\"\n    if any(\"闹事\" in d for d in deeds) and \"闹事\"\
+          \ not in deed:\n        history_hint = \"（老板显然还记得你上次闹的事。）\"\n    elif deeds:\n\
+          \        history_hint = \"（老板记得你之前\" + deeds[-1] + \"。）\"\n\n    tavern_state\
+          \ = \"打烊中\" if (\"走\" in act or \"离开\" in act) else \"营业中\"\n\n    return\
+          \ {\n        \"reply\": line + history_hint,\n        \"deed\": deed,\n\
+          \        \"memory_count\": len(deeds),\n        \"state\": tavern_state,\n\
+          \    }"
+        code_language: python3
+        outputs:
+          deed:
+            children: null
+            type: string
+          memory_count:
+            children: null
+            type: number
+          reply:
+            children: null
+            type: string
+          state:
+            children: null
+            type: string
+        selected: false
+        title: tavern_logic
+        type: code
+        variables:
+        - value_selector:
+          - sys
+          - query
+          value_type: string
+          variable: action
+        - value_selector:
+          - '1793112091765'
+          - body
+          value_type: string
+          variable: memory
+      height: 51
+      id: '1793112592482'
+      position:
+        x: 676
+        y: 282
+      positionAbsolute:
+        x: 676
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        authorization:
+          config: null
+          type: no-auth
+        body:
+          data:
+          - id: key-value-417
+            key: ''
+            type: text
+            value: "{\n  \"scope_id\": \"scp_30428ka4zqmfpa7ha96x41008y\",\n  \"kind\"\
+              : \"deed\",\n  \"text\": \"deed: {{#1793112592482.deed#}}\"\n}"
+          type: json
+        headers: Content-Type:application/json
+        method: post
+        params: ''
+        retry_config:
+          max_retries: 3
+          retry_enabled: true
+          retry_interval: 100
+        selected: false
+        ssl_verify: true
+        timeout:
+          max_connect_timeout: 0
+          max_read_timeout: 0
+          max_write_timeout: 0
+        title: remember_deed
+        type: http-request
+        url: http://host.docker.internal:8000/v1/memory/remember
+        variables: []
+      height: 137
+      id: '1793113431851'
+      position:
+        x: 978
+        y: 282
+      positionAbsolute:
+        x: 978
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    - data:
+        answer: '{{#1793112592482.reply#}}
+
+
+          —— 酒馆{{#1793112592482.state#}}｜老板记得你 {{#1793112592482.memory_count#}} 件事'
+        selected: false
+        title: 直接回复
+        type: answer
+        variables: []
+      height: 154
+      id: '1793114426822'
+      position:
+        x: 1280
+        y: 282
+      positionAbsolute:
+        x: 1280
+        y: 282
+      selected: false
+      sourcePosition: right
+      targetPosition: left
+      type: custom
+      width: 242
+      zIndex: 0
+    viewport:
+      x: -125.30936515788494
+      y: 89.86612270401093
+      zoom: 0.7636041150306102
+  rag_pipeline_variables: []
