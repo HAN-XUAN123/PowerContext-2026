@@ -1,0 +1,78 @@
+{
+  "summary": {
+    "queries": 5,
+    "int8": {
+      "top1": 0.8,
+      "recall3": 0.8
+    },
+    "fp32": {
+      "top1": 0.8,
+      "recall3": 0.8
+    },
+    "identical_ranking": true
+  },
+  "int8": [
+    {
+      "query": "混合检索怎么做",
+      "expect": 1,
+      "rank": 1,
+      "top": 1
+    },
+    {
+      "query": "浏览器本地跑 embedding",
+      "expect": 2,
+      "rank": 1,
+      "top": 2
+    },
+    {
+      "query": "GPU 不可用会怎样",
+      "expect": 3,
+      "rank": 1,
+      "top": 3
+    },
+    {
+      "query": "量化后体积变小多少",
+      "expect": 4,
+      "rank": 1,
+      "top": 4
+    },
+    {
+      "query": "哪个数据库支持向量检索",
+      "expect": 0,
+      "rank": 4,
+      "top": 4
+    }
+  ],
+  "fp32": [
+    {
+      "query": "混合检索怎么做",
+      "expect": 1,
+      "rank": 1,
+      "top": 1
+    },
+    {
+      "query": "浏览器本地跑 embedding",
+      "expect": 2,
+      "rank": 1,
+      "top": 2
+    },
+    {
+      "query": "GPU 不可用会怎样",
+      "expect": 3,
+      "rank": 1,
+      "top": 3
+    },
+    {
+      "query": "量化后体积变小多少",
+      "expect": 4,
+      "rank": 1,
+      "top": 4
+    },
+    {
+      "query": "哪个数据库支持向量检索",
+      "expect": 0,
+      "rank": 4,
+      "top": 4
+    }
+  ]
+}

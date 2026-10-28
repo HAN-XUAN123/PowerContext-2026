@@ -147,8 +147,16 @@ new Schema({
 
 ### 检索质量（量化对比）
 
-评测集：内置示例语料 5 段 + 10 条查询（见 `web/app.js` 的 `SAMPLE` 与 README 附录查询集）。
-指标：top-1 命中率、Recall@3。填入实测值后与 fp32 基线对比。
+评测集：内置示例语料 5 段 + 5 条人工标注查询（`scripts/measure-quality.mjs` 内的 `QUERIES`）。
+指标：top-1 命中率、Recall@3、以及 int8 与 fp32 的排名是否完全一致。
+
+| 精度 | top-1 | Recall@3 | 与 fp32 排名一致 |
+|---|---|---|---|
+| **int8**（浏览器默认） | 80% | 80% | 是（5/5 条排名相同） |
+| **fp32**（基线） | 80% | 80% | — |
+
+结论：在本组语料上，int8 量化**没有造成检索质量下降**（排名逐条一致），而模型体积从 90.4 MB 降到 22.7 MB（压缩比 4.0×）。
+复现：`node scripts/measure-quality.mjs`（会读取 `web/models/` 下的 int8 与 fp32 两套模型，输出 `docs/quality-report.json`）。
 
 ## 7. 已知限制
 
