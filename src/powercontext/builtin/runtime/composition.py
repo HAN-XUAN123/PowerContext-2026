@@ -140,7 +140,11 @@ from powercontext.builtin.runtime.decision_model import (
 from powercontext.builtin.runtime.family_processing import FAMILY_BINDINGS, FamilyWorkerSpec, run_family_worker
 from powercontext.builtin.runtime.memory_write_gate import build_memory_write_gate
 from powercontext.builtin.runtime.models import MemorySearchMode, RuntimeCapabilities
-from powercontext.builtin.runtime.processing_discovery import SourceProcessingPendingProvider, enabled_profile_scopes
+from powercontext.builtin.runtime.processing_discovery import (
+    SourcePendingCountProvider,
+    SourceProcessingPendingProvider,
+    enabled_profile_scopes,
+)
 from powercontext.builtin.runtime.processing_registry import (
     canonical_processing_manifest,
     dream_operations,
@@ -567,6 +571,7 @@ async def open_builtin_runtime(
                         else b.automatic_processing_interval.total_seconds(),
                         "cron": b.cron,
                         "timezone": b.timezone,
+                        "count_threshold": b.source_count_threshold,
                     }
                     for b in processing_bindings
                 ],
@@ -771,6 +776,10 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
             entrypoint = partial(run_family_worker, FamilyWorkerSpec(config=config, worker_security=worker_security))
         interval = None if family == "profile" else automatic[family]
         binding = canonical[family]
+        count_threshold = {
+            "memory": config.runtime.memory_source_count_threshold,
+            "topic-memory": config.runtime.topic_memory_source_count_threshold,
+        }.get(family)
         configured.append(
             ArtifactProcessingBinding(
                 binding_name=binding,
@@ -786,6 +795,8 @@ def _artifact_processing_bindings(  # noqa: C901 - validate and assemble one reg
                 pending_provider=None
                 if family == "skill"
                 else SourceProcessingPendingProvider(contexts.database, binding, family),
+                source_count_threshold=count_threshold,
+                pending_counter=None if count_threshold is None else SourcePendingCountProvider(binding, family),
                 automatic_scope_filter=enabled_profile_scopes if family == "profile" else None,
             )
         )

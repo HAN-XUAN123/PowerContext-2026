@@ -16,14 +16,14 @@
 
 from __future__ import annotations
 
-from sqlalchemy import select
+from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncConnection
 
 from powercontext.builtin.persistence.cursors import SourceCursorRepository
 from powercontext.builtin.persistence.database import AsyncDatabase
 from powercontext.builtin.persistence.processing_intents import ArtifactProcessingIntentRepository
 from powercontext.builtin.persistence.supervision import ArtifactProcessingFence, ArtifactProcessingLeaseRepository
-from powercontext.builtin.persistence.tables import PROFILE_POLICIES_TABLE, SOURCE_JOURNAL_HEADS_TABLE
+from powercontext.builtin.persistence.tables import PROFILE_POLICIES_TABLE, SOURCE_JOURNAL_HEADS_TABLE, SOURCES_TABLE
 
 
 async def enabled_profile_scopes(connection: AsyncConnection, scope_ids: tuple[str, ...]) -> frozenset[str]:
@@ -43,6 +43,34 @@ async def enabled_profile_scopes(connection: AsyncConnection, scope_ids: tuple[s
         .with_for_update()
     )
     return frozenset(rows)
+
+
+class SourcePendingCountProvider:
+    """Count persisted journal identities after one Family's successful cursor.
+
+    Only metadata is read: the journal position of every Source identity and the
+    binding's own cursor. Repeated captures of an identity and receipt trust
+    upgrades reuse their existing row, so they never add to the count.
+    """
+
+    def __init__(self, binding_name: str, artifact_family: str) -> None:
+        if artifact_family not in {"memory", "topic-memory"}:
+            raise ValueError("source count admission is only defined for Source-window Families")  # noqa: TRY003
+        self._binding = binding_name
+        self._cursors = SourceCursorRepository()
+
+    async def pending(self, connection: AsyncConnection, scope_id: str, /) -> int:
+        cursor = await self._cursors.load(connection, scope_id, self._binding)
+        after = 0 if cursor is None else cursor.cursor.sequence
+        table = SOURCES_TABLE
+        return int(
+            await connection.scalar(
+                select(func.count())
+                .select_from(table)
+                .where(table.c.scope_id == scope_id, table.c.journal_position > after)
+            )
+            or 0
+        )
 
 
 class SourceProcessingPendingProvider:
