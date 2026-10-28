@@ -28,6 +28,13 @@
 ---
 
 ## 1. 初始状态（修改前）
+> ⚠️ **仓库中的 `pricing.py` 是"修改后"的版本**（`9 passed`）。
+> 要复现"修改前失败"的基线，先执行：
+> ```bash
+> cp docs/dev-records/20261028T112652-pricing.py.before demo_project/pricing.py && cd demo_project && python -m pytest tests/test_pricing.py -q
+> # 预期：2 failed, 7 passed
+> ```
+> 复现完再执行 `cp docs/dev-records/20261028T112652-pricing.py.after demo_project/pricing.py` 恢复。
 
 ```bash
 cd minimax

@@ -130,6 +130,11 @@ python -m pytest tests/test_pricing.py -q
 
 `build` 的输出结构就是交给 MiniMax 的上下文，字段含义见 `docs/dev-records/*-context.json`。
 
+## 6.1 关于仓库里的代码版本
+
+仓库提交的 demo_project/pricing.py 是**修改后**的版本（测试全绿）。修改前的版本保存在
+docs/dev-records/20261028T112652-pricing.py.before，需要复现失败基线时按 erify.md 第 1 节恢复。
+
 ## 7. 已知限制
 
 - 上下文选择采用"关键词全文检索 + 规格全量兜底"的规则法，不做语义 embedding；规格条数多时需要人工调 `--limit`。
