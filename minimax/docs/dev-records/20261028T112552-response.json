@@ -1,0 +1,15 @@
+{
+  "meta": {
+    "mode": "dry-run"
+  },
+  "reply": {
+    "choices": [
+      {
+        "message": {
+          "content": "```python\n\"\"\"订单金额计算（业务工程示例）。\n\n当前实现只做了基础的负值检查与两位小数处理，\n尚未实现 SPEC-DISCOUNT-003 要求的「上限必须拒绝」。\n\"\"\"\n\nfrom __future__ import annotations\n\nfrom decimal import Decimal, ROUND_HALF_UP\n\n\nVIP_MAX_DISCOUNT = Decimal(\"0.30\")\n\n\ndef apply_discount(amount: Decimal, discount_rate: Decimal, is_vip: bool) -> Decimal:\n    \"\"\"按会员类型与折扣率计算应付金额。\n\n    Args:\n        amount: 订单原始金额。\n        discount_rate: 折扣率，0 表示不打折。\n        is_vip: 是否 VIP 会员。\n\n    Returns:\n        折扣后金额，保留两位小数。\n\n    Raises:\n        ValueError: 金额非正、折扣率为负、非 VIP 传了折扣。\n    \"\"\"\n    if amount <= 0:\n        raise ValueError(\"amount must be positive\")\n\n    if not is_vip:\n        if discount_rate != 0:\n            raise ValueError(\"discount is only available for vip members\")\n        return amount.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n\n    if discount_rate < 0:\n        raise ValueError(\"discount rate must not be negative\")\n\n    if discount_rate > VIP_MAX_DISCOUNT:\n        raise ValueError(\"discount rate exceeds limit: %s\" % discount_rate)\n    payable = amount * (Decimal(\"1\") - discount_rate)\n    return payable.quantize(Decimal(\"0.01\"), rounding=ROUND_HALF_UP)\n```"
+        }
+      }
+    ],
+    "dry_run": true
+  }
+}

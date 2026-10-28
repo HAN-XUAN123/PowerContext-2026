@@ -1,0 +1,43 @@
+"""订单金额计算（业务工程示例）。
+
+当前实现只做了基础的负值检查与两位小数处理，
+尚未实现 SPEC-DISCOUNT-003 要求的「上限必须拒绝」。
+"""
+
+from __future__ import annotations
+
+from decimal import Decimal, ROUND_HALF_UP
+
+
+VIP_MAX_DISCOUNT = Decimal("0.30")
+
+
+def apply_discount(amount: Decimal, discount_rate: Decimal, is_vip: bool) -> Decimal:
+    """按会员类型与折扣率计算应付金额。
+
+    Args:
+        amount: 订单原始金额。
+        discount_rate: 折扣率，0 表示不打折。
+        is_vip: 是否 VIP 会员。
+
+    Returns:
+        折扣后金额，保留两位小数。
+
+    Raises:
+        ValueError: 金额非正、折扣率为负、非 VIP 传了折扣、折扣率超过 0.30。
+    """
+    if amount <= 0:
+        raise ValueError("amount must be positive")
+
+    if not is_vip:
+        if discount_rate != 0:
+            raise ValueError("discount is only available for vip members")
+        return amount.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
+
+    if discount_rate < 0:
+        raise ValueError("discount rate must not be negative")
+    if discount_rate > VIP_MAX_DISCOUNT:
+        raise ValueError("discount rate exceeds limit")
+
+    payable = amount * (Decimal("1") - discount_rate)
+    return payable.quantize(Decimal("0.01"), rounding=ROUND_HALF_UP)
