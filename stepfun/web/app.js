@@ -7,9 +7,12 @@
  * 后端徽标会显示当前实际使用的推理后端与权重精度。
  */
 
-import { pipeline, env } from "https://cdn.jsdelivr.net/npm/@xenova/transformers@3.3.3/dist/transformers.min.js";
+import { pipeline, env } from "./vendor/transformers/transformers.min.js";
 
-env.allowLocalModels = false;
+env.allowLocalModels = true;
+env.localModelPath = "./models/";
+env.remoteHost = "https://hf-mirror.com";
+env.remotePathTemplate = "{model}/resolve/{revision}/";
 env.useBrowserCache = true;
 
 const MODEL_ID = "Xenova/all-MiniLM-L6-v2";

@@ -9,6 +9,7 @@
     "dev": "node server/index.js"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.3.1",
     "cors": "^2.8.5",
     "express": "^4.21.2",
     "seekdb": "^1.4.0"

@@ -114,10 +114,14 @@ new Schema({
 
 测试条件：Windows 11 / Chrome（WebGPU 可用）/ seekdb 1.x Docker（本地）/ 384 维 / 批大小 16。
 
-| 配置 | 模型加载 | 文档向量化（3 段） | 写入 seekdb | 查询向量化 | seekdb 检索 | 端到端 |
+| 配置 | 模型加载 | 文档向量化（5 段） | 写入 seekdb | 查询向量化 | seekdb 检索 | 端到端 |
 |---|---|---|---|---|---|---|
-| int8 + WebGPU（首次） | 待填 | 待填 | 85 ms | 待填 | 69 ms | 待填 |
-| int8 + WASM（降级） | 待填 | 待填 | — | 待填 | — | 待填 |
+| int8 + WebGPU（q8，首次） | 2148 ms | 650 ms | 127 ms | 318 ms | 74 ms | **395 ms** |
+| int8 + WASM（q8，降级） | 待测 | 待测 | 待测 | 待测 | 待测 | 待测 |
+
+> 测量条件：Windows 11 / Chrome（WebGPU 可用）/ seekdb Docker 本地 / 384 维 / 批大小 16 / 示例语料 5 段 / top-5。
+> 首次运行含 22.7 MB 模型文件的加载（本地静态服务，无外网下载）。
+> 实测查询「混合检索怎么做」返回 5 条 mode=hybrid 结果，排序合理。
 
 > `写入 85 ms`、`检索 69 ms` 为本次实测（3 条文档、top-3）；浏览器侧数字请在你机器上按下表复现后填入，
 > 页面「本次会话耗时」表格会实时显示这六项。
@@ -137,7 +141,7 @@ new Schema({
 
 ## 7. 已知限制
 
-- 前端从 CDN 加载 Transformers.js 与模型权重，**首次运行需要联网**（推理仍在本机，不违反"禁止云端推理"）；离线需求可把模型下载到 `web/models/` 并设 `env.allowLocalModels = true`。
+- Transformers.js 与模型权重均已**本地化**（`web/vendor/transformers/`、`web/models/`），运行时不需要外网，也不存在云端推理。仓库不提交模型文件（22.7 MB），用 `node scripts/fetch-model.mjs` 下载或自行从 hf-mirror 获取。
 - 全文分支使用 ik 分词，英文按词切分；纯符号查询可能只走向量分支。
 - `hybridSearch` 若因版本差异报错，服务会自动降级为纯向量检索并在响应 `mode` 字段标注。
 - 未实现图片内容检索（题面允许作为扩展）。
