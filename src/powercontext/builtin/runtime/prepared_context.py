@@ -17,6 +17,8 @@
 from __future__ import annotations
 
 import json
+import math
+import re
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 from itertools import chain
@@ -106,6 +108,7 @@ class PreparedContextBuild:
     origins: tuple[PreparedContextOrigin, ...]
     omissions: PreparedContextOmissions = PreparedContextOmissions()
     code_origins: tuple[CodeEvidenceRef, ...] = ()
+    fragments: tuple[PreparedContextFragment, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -115,6 +118,16 @@ class MemoryEntryAddress:
     memory: ArtifactAddress
     entry_id: str
     entry_version_id: str
+
+
+@dataclass(frozen=True)
+class PreparedContextFragment:
+    """One literal span of one Memory entry selected for the current query."""
+
+    address: MemoryEntryAddress
+    start: int
+    end: int
+    text: str
 
 
 PreparedContextOrigin = MemoryCitation | ArtifactRef | MemoryEntryAddress | ArtifactAddress
@@ -228,6 +241,12 @@ class PreparedContextBuilder:
 
             return assemble_code(request, code_candidates, self.entry_limit, historical)
 
+        if request.evidence_selection:
+            return self._build_evidence_selection(
+                request=request,
+                memory_candidates=memory_candidates,
+            )
+
         if sum(len(candidates.hits) for candidates in memory_candidates) > self.memory_candidate_limit:
             raise PreparedContextInvariantError("memory-candidate-limit")
         if len(topic_memory_hits) > self.topic_memory_candidate_limit:
@@ -254,6 +273,31 @@ class PreparedContextBuilder:
             context=PreparedContext(status="ready", content=content, content_bytes=content_bytes),
             origins=origins,
             omissions=omissions,
+        )
+
+    def _build_evidence_selection(
+        self,
+        *,
+        request: PrepareContextRequest,
+        memory_candidates: Sequence[PreparedMemoryCandidates],
+    ) -> PreparedContextBuild:
+        """Select literal Memory spans for the query inside the rendered byte budget."""
+
+        fragments = _select_evidence_fragments(
+            query=request.query,
+            memory_candidates=memory_candidates,
+            max_bytes=request.max_bytes,
+        )
+        if not fragments:
+            return PreparedContextBuild(context=self.empty(), origins=(), fragments=())
+        content = _render_selected_fragments(fragments)
+        content_bytes = len(content.encode("utf-8"))
+        if content_bytes > request.max_bytes:
+            raise PreparedContextInvariantError("output-budget")
+        return PreparedContextBuild(
+            context=PreparedContext(status="ready", content=content, content_bytes=content_bytes),
+            origins=tuple(fragment.address for fragment in fragments),
+            fragments=fragments,
         )
 
     def probe_budget(
@@ -728,3 +772,351 @@ def _truncate_utf8(text: str, byte_budget: int) -> str:
     prefix_budget = byte_budget - len(_ELLIPSIS.encode("utf-8"))
     encoded_prefix = text.encode("utf-8")[:prefix_budget]
     return f"{encoded_prefix.decode('utf-8', errors='ignore')}{_ELLIPSIS}"
+
+
+_SELECTION_TOKEN = re.compile(r"[a-z]+|\d+")
+_SENTENCE_END = re.compile(r"[.!?][\"')\]]*(?=\s)")
+_TRAILING_WORD = re.compile(r"([A-Za-z][A-Za-z.]{0,9})$")
+_SELECTION_STOPWORDS = frozenset({
+    "a", "about", "after", "all", "also", "an", "and", "any", "are", "as", "at", "be", "because", "been",
+    "before", "being", "between", "both", "but", "by", "can", "could", "did", "do", "does", "during", "each",
+    "for", "from", "had", "has", "have", "he", "her", "here", "his", "how", "if", "in", "into", "is", "it",
+    "its", "may", "more", "most", "no", "not", "of", "on", "only", "or", "other", "our", "out", "over",
+    "she", "should", "so", "some", "such", "than", "that", "the", "their", "them", "then", "there", "these",
+    "they", "this", "those", "to", "under", "up", "us", "use", "used", "using", "very", "was", "we", "were",
+    "what", "when", "where", "which", "while", "who", "will", "with", "would", "you",
+})
+_SENTENCE_ABBREVIATIONS = frozenset({
+    "al", "approx", "ca", "cf", "dr", "eg", "eq", "etc", "fig", "ie", "inc", "ltd", "mr", "mrs", "ms", "no",
+    "prof", "ref", "resp", "sp", "spp", "st", "vs",
+})
+_SENTENCE_CHUNK_CHARS = 220
+_SELECTION_WINDOW_CHARS = 170
+_SELECTION_TITLE_WEIGHT = 0.3
+_SELECTION_DOCUMENT_BONUS = 0.3
+
+
+@dataclass(frozen=True)
+class _SelectionEntry:
+    address: MemoryEntryAddress
+    text: str
+
+
+@dataclass(frozen=True)
+class _SentenceCandidate:
+    entry: int
+    start: int
+    end: int
+    score: float
+
+
+def _select_evidence_fragments(
+    *,
+    query: str,
+    memory_candidates: Sequence[PreparedMemoryCandidates],
+    max_bytes: int,
+) -> tuple[PreparedContextFragment, ...]:
+    """Choose the highest-signal literal spans that fit the rendered budget."""
+
+    entries = _selection_entries(memory_candidates)
+    if not entries:
+        return ()
+    terms = _selection_query_terms(query)
+    spans = tuple(_sentence_spans(entry.text) for entry in entries)
+    weights = _selection_term_weights(terms, entries, spans)
+    candidates = _selection_candidates(entries, spans, terms, weights)
+    if not candidates:
+        return ()
+    selected: tuple[PreparedContextFragment, ...] = ()
+    for candidate in candidates:
+        tentative = _merge_selection(selected, entries[candidate.entry], candidate.start, candidate.end)
+        if tentative == selected:
+            continue
+        if len(_render_selected_fragments(tentative).encode("utf-8")) <= max_bytes:
+            selected = tentative
+    for _ in range(6):
+        grown = _extend_selection(selected, entries, spans, max_bytes)
+        if grown == selected:
+            break
+        selected = grown
+    return selected
+
+
+def _selection_entries(memory_candidates: Sequence[PreparedMemoryCandidates]) -> tuple[_SelectionEntry, ...]:
+    entries: list[_SelectionEntry] = []
+    seen: set[tuple[str, str, str]] = set()
+    for candidates in memory_candidates:
+        if candidates.hits and not candidates.scope_id:
+            raise PreparedContextInvariantError("selection-scope-missing")
+        for hit in candidates.hits:
+            identity = (candidates.scope_id, hit.entry_id, hit.entry_version_id)
+            if identity in seen or not hit.text.strip():
+                continue
+            seen.add(identity)
+            entries.append(
+                _SelectionEntry(
+                    address=MemoryEntryAddress(
+                        memory=ArtifactAddress(scope_id=candidates.scope_id, artifact=hit.memory_ref),
+                        entry_id=hit.entry_id,
+                        entry_version_id=hit.entry_version_id,
+                    ),
+                    text=hit.text,
+                )
+            )
+    return tuple(entries)
+
+
+def _selection_query_terms(query: str) -> tuple[str, ...]:
+    terms = [term for term in _SELECTION_TOKEN.findall(query.lower()) if term not in _SELECTION_STOPWORDS]
+    if not terms:
+        terms = _SELECTION_TOKEN.findall(query.lower())
+    return tuple(dict.fromkeys(_selection_stem(term) for term in terms))
+
+
+def _selection_stem(token: str) -> str:
+    """Fold common English suffixes so claim and evidence word forms meet."""
+
+    if len(token) <= 4 or token.isdigit():
+        return token
+    for suffix, replacement in (
+        ("ically", ""),
+        ("ation", ""),
+        ("ities", "ity"),
+        ("ies", "y"),
+        ("ive", ""),
+        ("ing", ""),
+        ("ion", ""),
+        ("ed", ""),
+        ("s", ""),
+    ):
+        if token.endswith(suffix) and len(token) - len(suffix) >= 3:
+            return token[: -len(suffix)] + replacement
+    return token
+
+
+def _selection_tokens(text: str) -> tuple[str, ...]:
+    return tuple(_SELECTION_TOKEN.findall(text.lower()))
+
+
+def _selection_forms(text: str) -> tuple[str, ...]:
+    return tuple(_selection_stem(token) for token in _selection_tokens(text))
+
+
+def _sentence_spans(text: str) -> tuple[tuple[int, int], ...]:
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for match in _SENTENCE_END.finditer(text):
+        end = match.end()
+        if _ends_with_abbreviation(text, match.start()):
+            continue
+        span = _trimmed_span(text, start, end)
+        if span is not None:
+            spans.append(span)
+        start = end
+    span = _trimmed_span(text, start, len(text))
+    if span is not None:
+        spans.append(span)
+    return tuple(spans)
+
+
+def _trimmed_span(text: str, start: int, end: int) -> tuple[int, int] | None:
+    while start < end and text[start].isspace():
+        start += 1
+    while end > start and text[end - 1].isspace():
+        end -= 1
+    return None if end <= start else (start, end)
+
+
+def _ends_with_abbreviation(text: str, punctuation: int) -> bool:
+    match = _TRAILING_WORD.search(text[:punctuation])
+    if match is None:
+        return False
+    word = match.group(1).lower().replace(".", "")
+    return len(word) == 1 or word in _SENTENCE_ABBREVIATIONS
+
+
+def _selection_term_weights(
+    terms: Sequence[str],
+    entries: Sequence[_SelectionEntry],
+    spans: Sequence[Sequence[tuple[int, int]]],
+) -> dict[str, float]:
+    total = 0
+    frequency = dict.fromkeys(terms, 0)
+    for entry, entry_spans in zip(entries, spans, strict=True):
+        for start, end in entry_spans:
+            total += 1
+            present = set(_selection_forms(entry.text[start:end]))
+            for term in terms:
+                if term in present:
+                    frequency[term] += 1
+    if total == 0:
+        return dict.fromkeys(terms, 1.0)
+    return {term: math.log((total + 1) / (count + 1)) + 1.0 for term, count in frequency.items()}
+
+
+def _selection_candidates(
+    entries: Sequence[_SelectionEntry],
+    spans: Sequence[Sequence[tuple[int, int]]],
+    terms: Sequence[str],
+    weights: dict[str, float],
+) -> tuple[_SentenceCandidate, ...]:
+    candidates: list[_SentenceCandidate] = []
+    for index, (entry, entry_spans) in enumerate(zip(entries, spans, strict=True)):
+        for position, (start, end) in enumerate(entry_spans):
+            score = _selection_score(_selection_tokens(entry.text[start:end]), terms, weights)
+            if score <= 0:
+                continue
+            if position == 0:
+                # The leading span is usually a title: relevant, but rarely the evidence itself.
+                score *= _SELECTION_TITLE_WEIGHT
+            candidates.append(_SentenceCandidate(entry=index, start=start, end=end, score=score))
+            if end - start > _SENTENCE_CHUNK_CHARS:
+                for window_start, window_end in _selection_windows(entry.text, start, end):
+                    window_score = _selection_score(
+                        _selection_tokens(entry.text[window_start:window_end]), terms, weights
+                    )
+                    if window_score > 0:
+                        candidates.append(
+                            _SentenceCandidate(
+                                entry=index,
+                                start=window_start,
+                                end=window_end,
+                                score=window_score,
+                            )
+                        )
+    if not candidates:
+        return ()
+    best_by_entry: dict[int, float] = {}
+    for candidate in candidates:
+        best_by_entry[candidate.entry] = max(best_by_entry.get(candidate.entry, 0.0), candidate.score)
+    strongest = max(best_by_entry.values())
+    rescored: list[_SentenceCandidate] = []
+    for candidate in candidates:
+        document_factor = best_by_entry[candidate.entry] / strongest
+        rescored.append(
+            replace(
+                candidate,
+                score=candidate.score
+                * ((1.0 - _SELECTION_DOCUMENT_BONUS) + _SELECTION_DOCUMENT_BONUS * document_factor),
+            )
+        )
+    rescored.sort(key=lambda candidate: (-candidate.score, candidate.end - candidate.start, candidate.start))
+    return tuple(rescored)
+
+
+def _selection_score(tokens: Sequence[str], terms: Sequence[str], weights: dict[str, float]) -> float:
+    if not tokens:
+        return 0.0
+    forms = tuple(_selection_stem(token) for token in tokens)
+    form_set = set(forms)
+    matched = [term for term in terms if term in form_set]
+    if not matched:
+        return 0.0
+    score = sum(weights.get(term, 1.0) for term in matched)
+    if len(terms) > 1:
+        for left, right in zip(terms, terms[1:]):
+            if _contains_pair(forms, left, right):
+                score += 1.5
+    length_penalty = max(1.0, len(tokens) / 18.0) ** 0.25
+    return score / length_penalty
+
+
+def _contains_pair(tokens: Sequence[str], left: str, right: str) -> bool:
+    return any(tokens[index] == left and tokens[index + 1] == right for index in range(len(tokens) - 1))
+
+
+def _selection_windows(text: str, start: int, end: int) -> tuple[tuple[int, int], ...]:
+    windows: list[tuple[int, int]] = []
+    cursor = start
+    while cursor < end:
+        stop = min(end, cursor + _SELECTION_WINDOW_CHARS)
+        if stop < end:
+            next_space = text.find(" ", stop)
+            if next_space != -1 and next_space < end:
+                stop = next_space
+        span = _trimmed_span(text, cursor, stop)
+        if span is not None:
+            windows.append(span)
+        cursor = stop
+        while cursor < end and text[cursor].isspace():
+            cursor += 1
+    return tuple(windows)
+
+
+def _merge_selection(
+    fragments: tuple[PreparedContextFragment, ...],
+    entry: _SelectionEntry,
+    start: int,
+    end: int,
+) -> tuple[PreparedContextFragment, ...]:
+    kept = [fragment for fragment in fragments if fragment.address != entry.address]
+    pending = [fragment for fragment in fragments if fragment.address == entry.address]
+    changed = True
+    while changed:
+        changed = False
+        remaining: list[PreparedContextFragment] = []
+        for fragment in pending:
+            # Merge overlapping spans and spans separated by a single boundary space so
+            # neighbouring sentences become one citation-bearing fragment.
+            if start <= fragment.end + 1 and end + 1 >= fragment.start:
+                start = min(start, fragment.start)
+                end = max(end, fragment.end)
+                changed = True
+            else:
+                remaining.append(fragment)
+        pending = remaining
+    kept.extend(pending)
+    kept.append(
+        PreparedContextFragment(
+            address=entry.address,
+            start=start,
+            end=end,
+            text=entry.text[start:end],
+        )
+    )
+    kept.sort(key=lambda fragment: (fragment.address.memory.scope_id, fragment.address.entry_id, fragment.start))
+    return tuple(kept)
+
+
+def _extend_selection(
+    fragments: tuple[PreparedContextFragment, ...],
+    entries: Sequence[_SelectionEntry],
+    spans: Sequence[Sequence[tuple[int, int]]],
+    max_bytes: int,
+) -> tuple[PreparedContextFragment, ...]:
+    """Grow a selected span by one neighbouring sentence while the budget allows."""
+
+    for fragment in fragments:
+        index = next(index for index, entry in enumerate(entries) if entry.address == fragment.address)
+        for start, end in spans[index]:
+            if fragment.start <= start and end <= fragment.end:
+                continue
+            if end < fragment.start - 1 or start > fragment.end + 1:
+                continue
+            candidate = _merge_selection(fragments, entries[index], start, end)
+            if candidate == fragments:
+                continue
+            if len(_render_selected_fragments(candidate).encode("utf-8")) <= max_bytes:
+                return candidate
+    return fragments
+
+
+def _render_selected_fragments(fragments: Sequence[PreparedContextFragment]) -> str:
+    items = [
+        {
+            "citation": {
+                "scope_id": fragment.address.memory.scope_id,
+                "memory_ref": fragment.address.memory.artifact.model_dump(mode="json"),
+                "entry_id": fragment.address.entry_id,
+                "entry_version_id": fragment.address.entry_version_id,
+            },
+            "content": fragment.text,
+            "start": fragment.start,
+            "end": fragment.end,
+        }
+        for fragment in fragments
+    ]
+    envelope = {"trust": "untrusted_history", "items": items}
+    encoded = json.dumps(envelope, ensure_ascii=False, separators=(",", ":"))
+    return "\n\n".join((TRUST_POLICY, f"{_BEGIN_MARKER}\n{encoded}\n{_END_MARKER}"))
+
