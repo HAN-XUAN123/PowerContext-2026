@@ -17,8 +17,9 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from typing import Any
 
-from sqlalchemy import and_, delete, func, insert, or_, select, update
+from sqlalchemy import and_, delete, exists, func, insert, or_, select, update
 from sqlalchemy.dialects.mysql import insert as mysql_insert
 from sqlalchemy.dialects.sqlite import insert as sqlite_insert
 from sqlalchemy.ext.asyncio import AsyncConnection
@@ -40,6 +41,7 @@ from powercontext.builtin.artifacts.topic_memory import (
     TopicMemoryDraft,
     TopicMemoryProjection,
     TopicMemoryProjectionError,
+    TopicMemorySearchChannels,
     TopicMemorySearchMode,
     TopicMemorySearchRequest,
     TopicMemorySearchResult,
@@ -56,6 +58,7 @@ from powercontext.builtin.persistence.tables import (
     ARTIFACTS_TABLE,
     TOPIC_MEMORY_ACTIVE_CHUNKS_TABLE,
     TOPIC_MEMORY_ACTIVE_TOPICS_TABLE,
+    TOPIC_MEMORY_LIFECYCLE_TABLE,
     TOPIC_MEMORY_RETRIEVAL_SHAPE_TABLE,
     TOPIC_MEMORY_REVISION_PUBLICATIONS_TABLE,
 )
@@ -379,6 +382,13 @@ class TopicMemoryRepository:
             .where(
                 TOPIC_MEMORY_ACTIVE_TOPICS_TABLE.c.scope_id == scope_id,
                 TOPIC_MEMORY_ACTIVE_TOPICS_TABLE.c.family == TopicMemory.family,
+                ~exists(
+                    select(TOPIC_MEMORY_LIFECYCLE_TABLE.c.artifact_id).where(
+                        TOPIC_MEMORY_LIFECYCLE_TABLE.c.scope_id == scope_id,
+                        TOPIC_MEMORY_LIFECYCLE_TABLE.c.artifact_id
+                        == TOPIC_MEMORY_ACTIVE_TOPICS_TABLE.c.artifact_id,
+                    )
+                ),
             )
         )
         if tag_filter is not None:
@@ -487,6 +497,9 @@ class TopicMemoryRepository:
             admission=admission,
         )
         channels = await self.index.search(connection, scope_id, request)
+        restricted = await self.restricted_artifacts(connection, scope_id)
+        if restricted:
+            channels = _without_restricted(channels, restricted)
         await self._check_retrieval_shape(connection)
         outcome = _fuse_topic_memory_rankings(query, channels, limit, mode=used_mode, admission=admission)
         return TopicMemorySearchResult(
@@ -563,6 +576,13 @@ class TopicMemoryRepository:
             ],
         )
         return published_at
+
+    async def restricted_artifacts(self, connection: AsyncConnection, scope_id: str, /) -> frozenset[str]:
+        """Return Topic revisions that a lifecycle node withdrew from native search."""
+
+        table = TOPIC_MEMORY_LIFECYCLE_TABLE
+        rows = await connection.scalars(select(table.c.artifact_id).where(table.c.scope_id == scope_id))
+        return frozenset(str(value) for value in rows)
 
     def _validate_projection(
         self,
@@ -767,6 +787,25 @@ class TopicMemoryRepository:
             )
         except ValueError:
             raise TopicMemoryCapabilityError("embedding-vector", "query vector is invalid") from None
+
+
+def _without_restricted(
+    channels: TopicMemorySearchChannels,
+    restricted: frozenset[str],
+) -> TopicMemorySearchChannels:
+    """Drop withdrawn Topic revisions before channel fusion and ranking."""
+
+    def keep(hits: tuple[Any, ...]) -> tuple[Any, ...]:
+        return tuple(hit for hit in hits if hit.artifact_ref.artifact_id not in restricted)
+
+    return channels.model_copy(
+        update={
+            "topic_fts": keep(channels.topic_fts),
+            "topic_vector": keep(channels.topic_vector),
+            "detail_fts": keep(channels.detail_fts),
+            "detail_vector": keep(channels.detail_vector),
+        }
+    )
 
 
 def _aware_utc(value: object) -> datetime:

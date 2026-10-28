@@ -1180,6 +1180,72 @@ RECURRENCE_OBSERVATION_TABLE = Table(
 
 RECURRENCE_TABLES = (RECURRENCE_MATCH_TABLE, RECURRENCE_OBSERVATION_TABLE)
 
+# One evidence-dependency node per Scope. Sources carry their own lifecycle
+# revision and last applied event sequence; derived nodes carry the explicit
+# all/any policy over their registered parents. ``reference`` is the canonical
+# JSON of the exact SourceRef, MemoryCitation, or Topic ArtifactRef.
+SOURCE_LIFECYCLE_NODES_TABLE = Table(
+    "pc_source_lifecycle_nodes",
+    SHARED_METADATA,
+    Column("scope_id", identity_string(MAX_SCOPE_ID_LENGTH), primary_key=True),
+    Column("node_id", identity_string(256), primary_key=True),
+    Column("ordinal", Integer, nullable=False),
+    Column("kind", String(8), nullable=False),
+    Column("revision", Integer),
+    Column("sequence", Integer, nullable=False),
+    Column("available", Boolean, nullable=False),
+    Column("policy", String(4), nullable=False),
+    Column("parents", _entry_text_type(), nullable=False),
+    Column("reference", _canonical_payload_type(), nullable=False),
+    ForeignKeyConstraint(("scope_id",), ("pc_scopes.scope_id",), ondelete="CASCADE"),
+    UniqueConstraint("scope_id", "ordinal", name="uq_pc_source_lifecycle_nodes_ordinal"),
+    CheckConstraint("kind IN ('source', 'memory', 'topic')", name="ck_pc_source_lifecycle_nodes_kind"),
+    CheckConstraint("policy IN ('all', 'any')", name="ck_pc_source_lifecycle_nodes_policy"),
+    CheckConstraint("ordinal >= 0", name="ck_pc_source_lifecycle_nodes_ordinal_nonnegative"),
+    CheckConstraint("sequence >= 0", name="ck_pc_source_lifecycle_nodes_sequence_nonnegative"),
+    CheckConstraint("revision IS NULL OR revision > 0", name="ck_pc_source_lifecycle_nodes_revision_positive"),
+)
+
+# Accepted Source lifecycle events. (scope_id, node_id, sequence) is the event
+# identity: a replay with identical content is idempotent, any other reuse of a
+# non-increasing sequence is rejected before it can change availability.
+SOURCE_LIFECYCLE_EVENTS_TABLE = Table(
+    "pc_source_lifecycle_events",
+    SHARED_METADATA,
+    Column("scope_id", identity_string(MAX_SCOPE_ID_LENGTH), primary_key=True),
+    Column("node_id", identity_string(256), primary_key=True),
+    Column("sequence", Integer, primary_key=True),
+    Column("revision", Integer, nullable=False),
+    Column("available", Boolean, nullable=False),
+    Column("reason", _entry_text_type(), nullable=False),
+    Column("recorded_at", DateTime(timezone=True), nullable=False),
+    ForeignKeyConstraint(
+        ("scope_id", "node_id"),
+        ("pc_source_lifecycle_nodes.scope_id", "pc_source_lifecycle_nodes.node_id"),
+        ondelete="CASCADE",
+    ),
+    CheckConstraint("sequence > 0", name="ck_pc_source_lifecycle_events_sequence_positive"),
+    CheckConstraint("revision > 0", name="ck_pc_source_lifecycle_events_revision_positive"),
+)
+
+# Topic projections stay published (so exact Revision reads and the retrieval
+# shape invariant keep working); this row only removes the current projection
+# from native search until a lifecycle event restores it.
+TOPIC_MEMORY_LIFECYCLE_TABLE = Table(
+    "pc_topic_memory_lifecycle",
+    SHARED_METADATA,
+    Column("scope_id", identity_string(MAX_SCOPE_ID_LENGTH), primary_key=True),
+    Column("artifact_id", identity_string(MAX_ARTIFACT_ID_LENGTH), primary_key=True),
+    Column("node_id", identity_string(256), nullable=False),
+    ForeignKeyConstraint(("scope_id",), ("pc_scopes.scope_id",), ondelete="CASCADE"),
+)
+
+SOURCE_LIFECYCLE_TABLES = (
+    SOURCE_LIFECYCLE_NODES_TABLE,
+    SOURCE_LIFECYCLE_EVENTS_TABLE,
+    TOPIC_MEMORY_LIFECYCLE_TABLE,
+)
+
 BUILTIN_TABLES = (
     SCOPE_TABLES
     + SHARED_TABLES
@@ -1187,5 +1253,6 @@ BUILTIN_TABLES = (
     + MEMORY_TABLES
     + STATISTICS_TABLES
     + RECURRENCE_TABLES
+    + SOURCE_LIFECYCLE_TABLES
     + (ARTIFACT_TAGS_TABLE, DREAM_RUNS_TABLE, RECEIPT_MIGRATION_REVIEW_TABLE)
 )
