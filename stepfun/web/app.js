@@ -33,9 +33,13 @@ function detectWebGPU() {
   return typeof navigator !== "undefined" && !!navigator.gpu;
 }
 
+// 手动指定后端：http://127.0.0.1:8787/?forceBackend=wasm
+// 用途：在支持 WebGPU 的机器上也能复现 WASM 降级路径（评审可自行验证）
+const FORCE_BACKEND = new URLSearchParams(location.search).get("forceBackend");
+
 async function loadModel() {
   const started = performance.now();
-  const hasGPU = detectWebGPU();
+  const hasGPU = detectWebGPU() && FORCE_BACKEND !== "wasm";
   const attempts = hasGPU
     ? [{ device: "webgpu", dtype: "fp16" }, { device: "webgpu", dtype: "q8" }, { device: "wasm", dtype: "q8" }]
     : [{ device: "wasm", dtype: "q8" }];
@@ -52,7 +56,7 @@ async function loadModel() {
       dtype = attempt.dtype;
       const ms = Math.round(performance.now() - started);
       el("t-model").textContent = String(ms);
-      el("backend").textContent = `推理后端：${backend === "webgpu" ? "WebGPU" : "WASM"}（${dtype}）`;
+      el("backend").textContent = `推理后端：${backend === "webgpu" ? "WebGPU" : "WASM"}（${dtype}）${FORCE_BACKEND ? " · 手动指定" : ""}`;
       el("backend").className = "badge " + (backend === "webgpu" ? "gpu" : "wasm");
       el("model").textContent = `模型：all-MiniLM-L6-v2 · ${dtype}`;
       el("model").className = "badge";
@@ -179,8 +183,8 @@ el("sample").addEventListener("click", () => {
 
 // 启动即探测后端与数据库
 (async () => {
-  const hasGPU = detectWebGPU();
-  el("backend").textContent = `推理后端：${hasGPU ? "WebGPU 可用" : "WASM（无 WebGPU）"}`;
+  const hasGPU = detectWebGPU() && FORCE_BACKEND !== "wasm";
+  el("backend").textContent = `推理后端：${hasGPU ? "WebGPU 可用" : "WASM（无 WebGPU 或已手动指定）"}`;
   el("backend").className = "badge " + (hasGPU ? "gpu" : "wasm");
   try {
     const health = await (await fetch(API + "/api/health")).json();

@@ -122,7 +122,7 @@ new Schema({
 | 配置 | 模型加载 | 文档向量化（5 段） | 写入 seekdb | 查询向量化 | seekdb 检索 | 端到端 |
 |---|---|---|---|---|---|---|
 | int8 + WebGPU（q8，首次） | 2148 ms | 650 ms | 127 ms | 318 ms | 74 ms | **395 ms** |
-| int8 + WASM（q8，降级） | 待测 | 待测 | 待测 | 待测 | 待测 | 待测 |
+| int8 + WASM（q8，`?forceBackend=wasm`） | 472 ms | 105 ms | 137 ms | 47 ms | 166 ms | **218 ms** |
 
 > 测量条件：Windows 11 / Chrome（WebGPU 可用）/ seekdb Docker 本地 / 384 维 / 批大小 16 / 示例语料 5 段 / top-5。
 > 首次运行含 22.7 MB 模型文件的加载（本地静态服务，无外网下载）。
@@ -130,6 +130,12 @@ new Schema({
 
 > `写入 85 ms`、`检索 69 ms` 为本次实测（3 条文档、top-3）；浏览器侧数字请在你机器上按下表复现后填入，
 > 页面「本次会话耗时」表格会实时显示这六项。
+
+### 降级复现（无需改浏览器设置）
+
+在支持 WebGPU 的机器上，访问 `http://127.0.0.1:8787/?forceBackend=wasm` 即可强制走 WASM 路径，
+徽标会显示 `WASM（q8）· 手动指定`；不带参数时自动选择 WebGPU。两条路径的检索结果一致，仅耗时不同。
+截图见 `screenshots/S1-webgpu.png`、`screenshots/S2-wasm.png`。
 
 ### 复现方法
 
