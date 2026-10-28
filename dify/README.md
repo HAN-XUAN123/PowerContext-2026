@@ -89,8 +89,13 @@ docker compose up -d
 
 1. Dify → 应用 → **导入 DSL 文件** → 选择 `memory-tavern.dsl.yml`
 2. 打开应用 → 编排界面
-3. 把两个 HTTP 节点里的 `<SCOPE_ID>` 替换成 `scope.txt` 里的真实 scope_id（共 2 处：`search_memory`、`remember_deed`）
+3. 把两个 HTTP 节点里的 `<SCOPE_ID>` 替换成 `scope.txt` 里的真实 scope_id（共 2 处：`list_memory`、`remember_deed`）
 4. 保存 / 发布
+
+> 包内交付的是**占位符** `<SCOPE_ID>`（`memory-tavern.ifpkg` 里两处），不是事先填好的 id。
+> 两个节点必须替换成**同一个** scope id，否则读写落在不同命名空间，跨会话记忆不成立。
+> 节点与端点对应关系：`list_memory` → `POST /v1/memory/entries/list`（读），
+> `remember_deed` → `POST /v1/memory/remember`（写）。
 
 > DSL 里两个 HTTP 节点的 URL 默认写的是 `http://host.docker.internal:8000/...`。
 > 若你的 PowerContext 不在本机，改成对应地址即可。

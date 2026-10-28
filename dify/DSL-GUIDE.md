@@ -1,202 +1,107 @@
-# 《记忆酒馆》Dify Chatflow 搭建指南（不需要任何模型 API）
+# DSL 结构说明（与 memory-tavern.ifpkg 实际内容一致）
 
-> 目标：在 Dify 云端用 **Chatflow** 搭一个会记住玩家行为的文字小游戏。
-> 全程只用 Start / HTTP Request / Code / Answer 四种节点，**不调用任何 LLM**，因此不需要 OpenAI 之类的 Key。
+> 本文档描述的是**交付包内的真实节点**，不是设计稿。
+> 包内共 5 个节点、2 个 HTTP 节点，端点与节点标题如下。
 
 ---
 
-## 0. 准备 PowerContext
+## 1. 节点图
 
-四个终端窗口里，窗口 C 跑着 PowerContext（8000 端口）。先在窗口 D 执行，创建游戏用的 scope：
-
-```powershell
-cd D:\projects\qoder-paperlens
-.\.venv\Scripts\python.exe -c "import json,urllib.request as u; req=u.Request('http://127.0.0.1:8000/v1/scopes', data=json.dumps({'title':'Memory Tavern','summary':'memory tavern game','idempotency_key':'tavern-v1'}).encode(), headers={'Content-Type':'application/json'}, method='POST'); print(json.load(u.urlopen(req)))"
+```
+开始(记忆酒馆)
+   ↓
+用户输入            ← 单轮文本输入
+   ↓
+list_memory         ← POST /v1/memory/entries/list   （读记忆）
+   ↓
+tavern_logic        ← 代码节点：关键词匹配 + 记忆注入 → 台词
+   ↓
+remember_deed       ← POST /v1/memory/remember       （写记忆）
+   ↓
+直接回复            ← 输出台词 + 状态行
 ```
 
-记下返回的 `scope_id`（形如 `scp_xxxxxxxx`），后面两个 HTTP 节点都要用。
-
-> ⚠️ Dify 云端运行在公网，**访问不到你本机的 127.0.0.1:8000**。二选一：
-> - **本地 Dify**（Docker）→ 可以用 `http://host.docker.internal:8000` 访问本机 PowerContext；
-> - **云端 Dify** → 需要把 PowerContext 暴露到公网（内网穿透），或者改用云端能访问的地址。
-> 建议用**本地 Dify**，最省事。
-
 ---
 
-## 1. 新建应用
+## 2. 两个 HTTP 节点的完整配置
 
-Dify → 创建应用 → **Chatflow** → 名称「记忆酒馆」→ 创建。
-
-进入编排界面后，会看到默认的「开始」和「直接回复」节点。删掉「直接回复」，保留「开始」。
-
----
-
-## 2. 节点 1：开始（Start）
-
-- 添加一个变量：变量名 `action`，类型 **文本**，必填，最大长度 200
-- 描述：`玩家这一轮的输入，例如"来杯最烈的酒"`
-
----
-
-## 3. 节点 2：查记忆（HTTP Request）
-
-连接到「开始」之后。配置：
+### 2.1 `list_memory`（读）
 
 | 项 | 值 |
 |---|---|
-| 方法 | POST |
-| URL | `http://host.docker.internal:8000/v1/memory/search` |
+| 方法 | `POST` |
+| URL | `http://host.docker.internal:8000/v1/memory/entries/list` |
 | Headers | `Content-Type: application/json` |
-| Body 类型 | JSON |
-| Body | 见下方 |
+| Body | `{"scope_id": "<SCOPE_ID>"}` |
+| 超时/重试 | 默认，重试 3 次 |
 
-Body：
+响应形如：
 
 ```json
-{
-  "scope_id": "<你的 scope_id>",
-  "query": "{{#start.action#}}",
-  "limit": 10
-}
+{"entries": [
+  {"kind": "deed", "text": "deed: 在店里闹事", "state": "active",
+   "citation": {"entry_id": "mem_ent_...", "entry_version_id": "mem_ver_..."}}
+]}
 ```
 
-**输出变量**：勾选 `body`、`status_code`。
+`tavern_logic` 通过 `{{#list_memory.body#}}` 引用它的响应体。
 
-节点命名：`search_memory`
-
----
-
-## 4. 节点 3：酒馆逻辑（Code）
-
-连接到「查记忆」之后。语言选 **Python3**，输入变量：
-
-| 变量名 | 值 |
-|---|---|
-| `action` | `{{#start.action#}}` |
-| `memory` | `{{#search_memory.body#}}` |
-
-代码（直接粘贴）：
-
-```python
-import json
-
-def main(action: str, memory: str) -> dict:
-    # 1) 解析历史记忆
-    deeds = []
-    try:
-        data = json.loads(memory) if isinstance(memory, str) else (memory or {})
-        for hit in (data.get("hits") or []):
-            text = hit.get("text") or ""
-            if text.startswith("deed:"):
-                deeds.append(text.split(":", 1)[1].strip())
-    except Exception:
-        deeds = []
-
-    act = (action or "").strip()
-
-    # 2) 关键词 -> 老板反应（模板化，无需 LLM）
-    if any(k in act for k in ["酒", "喝", "杯"]):
-        deed, line = "点了一杯酒", "老板擦着杯子：「来了？还是老样子。」"
-    elif any(k in act for k in ["打", "砸", "掀", "闹"]):
-        deed, line = "在店里闹事", "老板眯起眼：「又来？上次的账还没结。」"
-    elif any(k in act for k in ["钱", "赔", "还"]):
-        deed, line = "提到赔钱", "老板哼了一声：「算你还有点良心。」"
-    elif any(k in act for k in ["走", "再见", "离开"]):
-        deed, line = "准备离开", "老板头也不抬：「下次记得带钱。」"
-    else:
-        deed, line = f"说了一句「{act[:40]}」", "老板抬眼看了看你，没接话。"
-
-    # 3) 记忆复用：如果以前闹过事，这轮回应要提到
-    history_hint = ""
-    if any("闹事" in d for d in deeds) and "闹事" not in deed:
-        history_hint = "（老板显然还记得你上次闹的事。）"
-    elif deeds:
-        history_hint = f"（老板记得你之前{deeds[-1]}。）"
-
-    tavern_state = "打烊中" if "走" in act or "离开" in act else "营业中"
-
-    return {
-        "reply": line + history_hint,
-        "deed": deed,
-        "memory_count": len(deeds),
-        "state": tavern_state,
-    }
-```
-
-**输出变量**：`reply`、`deed`、`memory_count`、`state`
-
-节点命名：`tavern_logic`
-
----
-
-## 5. 节点 4：写记忆（HTTP Request）
-
-连接到「酒馆逻辑」之后。
+### 2.2 `remember_deed`（写）
 
 | 项 | 值 |
 |---|---|
-| 方法 | POST |
+| 方法 | `POST` |
 | URL | `http://host.docker.internal:8000/v1/memory/remember` |
 | Headers | `Content-Type: application/json` |
-| Body | 见下方 |
+| Body | `{"scope_id": "<SCOPE_ID>", "kind": "deed", "text": "deed: {{#1793112592482.deed#}}"}` |
+| 超时/重试 | 默认，重试 3 次 |
+
+其中 `{{#1793112592482.deed#}}` 是 `tavern_logic` 节点输出的 `deed` 字段。
+
+响应形如：
 
 ```json
-{
-  "scope_id": "<你的 scope_id>",
-  "kind": "deed",
-  "text": "deed: {{#tavern_logic.deed#}}"
-}
-```
-
-节点命名：`remember_deed`
-
----
-
-## 6. 节点 5：回答（Answer）
-
-连接到「写记忆」之后。内容：
-
-```
-{{#tavern_logic.reply#}}
-
-—— 酒馆{{#tavern_logic.state#}}｜老板记得你 {{#tavern_logic.memory_count#}} 件事
+{"memory": {"family": "memory", "revision": 5},
+ "entry": {"citation": {"entry_id": "mem_ent_...", "entry_version_id": "mem_ver_..."}}}
 ```
 
 ---
 
-## 7. 连线顺序
+## 3. `<SCOPE_ID>` 替换（导入后必做）
 
+1. 先取得 scope id：
+
+```powershell
+cd D:\projects\qoder-paperlens\dify
+python init_scope.py        # 幂等；打印 scope_id 并写入 scope.txt
 ```
-开始 → search_memory → tavern_logic → remember_deed → 回答
-```
+
+2. 在 Dify 编排界面打开这两个节点，把 Body 里的 `<SCOPE_ID>` 换成 `scope.txt` 里的值。
+3. **两处必须一致**。
+4. 保存并发布。
+
+> 也可以用环境变量方式：在 Dify 的「环境变量」里定义 `SCOPE_ID`，两个节点 Body 改成
+> `{"scope_id": "{{#env.SCOPE_ID#}}"}`。这样只需维护一处（本项目交付的是占位符形式，二选一即可）。
 
 ---
 
-## 8. 自测三轮（验证记忆真的生效）
+## 4. `tavern_logic` 节点做什么
 
-在同一会话里依次发：
+- 输入：`{{#用户输入#}}` 与 `{{#list_memory.body#}}`
+- 解析 `entries`，统计 `kind == "deed"` 的条数 → 得到「老板记得你做过 N 种事」
+- 关键词匹配当前输入，产生 `deed`（本轮行为）与台词
+- 输出：`{"deed": "...", "reply": "..."}`
 
-| 轮次 | 输入 | 预期 |
-|---|---|---|
-| 1 | `来杯最烈的酒` | 「来了？还是老样子。」，记得你 0 件事 |
-| 2 | `我把桌子掀了` | 「又来？上次的账还没结。」，记得你 1 件事 |
-| 3 | `随便说点什么` | 出现「（老板显然还记得你上次闹的事。）」，记得你 2 件事 |
-
-**关键验证**：新开一个对话（新会话），第一句发 `来杯酒`，如果回复里出现「（老板记得你之前…闹事…）」，说明**跨会话记忆生效**——这正是 PowerContext 在起作用。
+不含 LLM 调用，纯规则，保证任何环境可复现。
 
 ---
 
-## 9. 导出 DSL
-
-Dify → 应用右上角 `...` → **导出 DSL** → 保存为 `memory-tavern.dsl.yml`，放进仓库 `dify/` 目录。
-
----
-
-## 10. 常见问题
+## 5. 常见问题
 
 | 现象 | 原因 | 处理 |
 |---|---|---|
-| HTTP 节点报连接失败 | 云端 Dify 访问不到 127.0.0.1 | 用本地 Dify + `host.docker.internal`，或内网穿透 |
-| code 节点报 `action` 未定义 | Start 变量名不是 `action` | 检查开始节点变量名 |
-| 记忆数一直是 0 | `kind` 不是 `deed` 或 scope 不一致 | 两个 HTTP 节点用同一个 scope_id |
-| 报 404 scope_not_found | scope 没创建 | 重跑第 0 步 |
+| 记忆数一直是 0 | `kind` 不是 `deed`，或两个节点 scope 不一致 | 检查两处 `<SCOPE_ID>` 是否同值；确认写入 `kind=deed` |
+| `list_memory` 返回 404 | PowerContext 未启动或端口不对 | 确认 `http://127.0.0.1:8000` 可访问；容器内访问宿主机用 `host.docker.internal` |
+| `remember_deed` 返回 401/403 | PowerContext 开了访问控制 | 设置 `POWERCONTEXT_SERVER_ACCESS_MODE=disabled` 或配置 token |
+| 导入后看不到 `<SCOPE_ID>` | 包已更新为占位符版本 | 打开节点 Body 查看；若仍是 `scp_...`，说明导入的是旧包 |
+| 新会话不记得历史 | 两个节点 scope 不同，或 `list_memory` 没接进 `tavern_logic` | 按第 2、3 节核对 |

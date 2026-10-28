@@ -122,7 +122,7 @@ workflow:
           - id: key-value-184
             key: ''
             type: text
-            value: "{\n  \"scope_id\": \"scp_30428ka4zqmfpa7ha96x41008y\"\n}"
+            value: "{\n  \"scope_id\": \"<SCOPE_ID>\"\n}"
           type: json
         headers: Content-Type:application/json
         method: post
@@ -229,7 +229,7 @@ workflow:
           - id: key-value-417
             key: ''
             type: text
-            value: "{\n  \"scope_id\": \"scp_30428ka4zqmfpa7ha96x41008y\",\n  \"kind\"\
+            value: "{\n  \"scope_id\": \"<SCOPE_ID>\",\n  \"kind\"\
               : \"deed\",\n  \"text\": \"deed: {{#1793112592482.deed#}}\"\n}"
           type: json
         headers: Content-Type:application/json

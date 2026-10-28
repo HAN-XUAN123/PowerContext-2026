@@ -1,0 +1,94 @@
+{
+  "scope_id": "scp_0qyxeecf7ecqvdpc2x4pzqd94r",
+  "endpoints": {
+    "write": "POST /v1/memory/remember",
+    "read": "POST /v1/memory/entries/list"
+  },
+  "entries": [
+    {
+      "citation": {
+        "memory_ref": {
+          "family": "memory",
+          "artifact_id": "memory",
+          "revision": 5
+        },
+        "entry_id": "mem_ent_1ca9ecc7f9244d1698f33ad8886f5c3b",
+        "entry_version_id": "mem_ver_05494104f21d48da9ee659f2e45068bb"
+      },
+      "version": 1,
+      "kind": "deed",
+      "text": "deed: 提到赔钱",
+      "state": "active",
+      "source_refs": [],
+      "artifact_refs": []
+    },
+    {
+      "citation": {
+        "memory_ref": {
+          "family": "memory",
+          "artifact_id": "memory",
+          "revision": 5
+        },
+        "entry_id": "mem_ent_8cfda4c01485417c9207ce2df4ec8879",
+        "entry_version_id": "mem_ver_05c0d943466a4919a21be67f99591737"
+      },
+      "version": 1,
+      "kind": "deed",
+      "text": "deed: 点了一杯最烈的酒",
+      "state": "active",
+      "source_refs": [],
+      "artifact_refs": []
+    },
+    {
+      "citation": {
+        "memory_ref": {
+          "family": "memory",
+          "artifact_id": "memory",
+          "revision": 5
+        },
+        "entry_id": "mem_ent_a599298b484c4baf9717cc64e2d42f81",
+        "entry_version_id": "mem_ver_4eff258ecf514e41b85cdf47f79fae56"
+      },
+      "version": 1,
+      "kind": "deed",
+      "text": "deed: 准备离开",
+      "state": "active",
+      "source_refs": [],
+      "artifact_refs": []
+    },
+    {
+      "citation": {
+        "memory_ref": {
+          "family": "memory",
+          "artifact_id": "memory",
+          "revision": 5
+        },
+        "entry_id": "mem_ent_d671099043c84fcb81b49b613c4c083e",
+        "entry_version_id": "mem_ver_3a4e26014e5848678864db558bf20e6a"
+      },
+      "version": 1,
+      "kind": "deed",
+      "text": "deed: 点了一杯酒",
+      "state": "active",
+      "source_refs": [],
+      "artifact_refs": []
+    },
+    {
+      "citation": {
+        "memory_ref": {
+          "family": "memory",
+          "artifact_id": "memory",
+          "revision": 5
+        },
+        "entry_id": "mem_ent_f26591d0bb0640ae9975512ed48c65c8",
+        "entry_version_id": "mem_ver_1d0a1e2695184575a79e9c46412e925f"
+      },
+      "version": 1,
+      "kind": "deed",
+      "text": "deed: 在店里闹事",
+      "state": "active",
+      "source_refs": [],
+      "artifact_refs": []
+    }
+  ]
+}
