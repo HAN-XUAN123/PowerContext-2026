@@ -1,0 +1,16 @@
+{
+  "name": "stepfun-mini-kb",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "端侧向量化 + seekdb 混合检索的迷你知识库（StepFun × seekdb 赛题）",
+  "scripts": {
+    "start": "node server/index.js",
+    "dev": "node server/index.js"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "express": "^4.21.2",
+    "seekdb": "^1.4.0"
+  }
+}

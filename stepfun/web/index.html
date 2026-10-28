@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>端侧知识库 · StepFun × seekdb</title>
+<style>
+  :root { --fg:#111827; --muted:#6b7280; --line:#e5e7eb; --accent:#0f766e; --soft:#f9fafb; --warn:#b45309; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.65 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif; color:var(--fg); background:#fff; }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 24px; }
+  h1 { font-size: 24px; margin: 0 0 6px; }
+  .sub { color: var(--muted); margin: 0 0 20px; }
+  .bar { display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px; }
+  .badge { font-size:12px; padding:4px 10px; border-radius:999px; border:1px solid var(--line); background:var(--soft); }
+  .badge.gpu { border-color:#10b981; color:#047857; background:#ecfdf5; }
+  .badge.wasm { border-color:#f59e0b; color:var(--warn); background:#fffbeb; }
+  .badge.idle { color:var(--muted); }
+  button { font:inherit; padding:8px 14px; border-radius:8px; border:1px solid var(--line); background:#fff; cursor:pointer; }
+  button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+  button:disabled { opacity:.5; cursor:not-allowed; }
+  textarea, input[type=text] { width:100%; font:inherit; padding:10px; border:1px solid var(--line); border-radius:8px; }
+  .grid { display:grid; grid-template-columns: 1fr 1fr; gap:16px; }
+  @media (max-width: 820px) { .grid { grid-template-columns: 1fr; } }
+  .card { border:1px solid var(--line); border-radius:10px; padding:14px; background:#fff; }
+  .card h2 { font-size:15px; margin:0 0 10px; }
+  .log { font:12.5px/1.5 ui-monospace,Consolas,monospace; background:var(--soft); border:1px solid var(--line); border-radius:8px; padding:10px; max-height:180px; overflow:auto; white-space:pre-wrap; }
+  .hit { border:1px solid var(--line); border-radius:8px; padding:10px; margin-bottom:8px; }
+  .hit .meta { font-size:12px; color:var(--muted); margin-bottom:4px; }
+  .hit .text { white-space:pre-wrap; }
+  table { width:100%; border-collapse:collapse; font-size:13px; }
+  th, td { border:1px solid var(--line); padding:6px 8px; text-align:left; }
+  th { background:var(--soft); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>端侧知识库 <span style="font-weight:400;color:var(--muted);font-size:16px">StepFun × seekdb</span></h1>
+  <p class="sub">向量在浏览器本地计算（Transformers.js），存储与混合检索由 seekdb 完成。全程不调用任何云端推理 API。</p>
+
+  <div class="bar">
+    <span id="backend" class="badge idle">推理后端：未初始化</span>
+    <span id="model" class="badge idle">模型：未加载</span>
+    <span id="db" class="badge idle">seekdb：未连接</span>
+  </div>
+
+  <div class="grid">
+    <div class="card">
+      <h2>1. 导入语料</h2>
+      <textarea id="corpus" rows="8" placeholder="每行一段文本，或用空行分隔段落"></textarea>
+      <div class="bar" style="margin-top:10px">
+        <button id="ingest" class="primary">本地向量化并写入 seekdb</button>
+        <button id="sample">载入示例语料</button>
+      </div>
+      <div id="ingestLog" class="log">等待操作…</div>
+    </div>
+
+    <div class="card">
+      <h2>2. 检索</h2>
+      <input type="text" id="query" placeholder="输入查询，例如：数据库怎么做混合检索" />
+      <div class="bar" style="margin-top:10px">
+        <button id="search" class="primary">混合检索</button>
+        <label style="font-size:13px;color:var(--muted)">Top-K
+          <input type="text" id="topk" value="5" style="width:56px;display:inline-block;padding:4px 6px" />
+        </label>
+      </div>
+      <div id="hits" style="margin-top:10px"></div>
+    </div>
+  </div>
+
+  <div class="card" style="margin-top:16px">
+    <h2>3. 本次会话耗时（毫秒）</h2>
+    <table id="timing">
+      <tr><th>阶段</th><th>耗时</th></tr>
+      <tr><td>模型加载</td><td id="t-model">—</td></tr>
+      <tr><td>文档向量化</td><td id="t-embed-doc">—</td></tr>
+      <tr><td>写入 seekdb</td><td id="t-write">—</td></tr>
+      <tr><td>查询向量化</td><td id="t-embed-query">—</td></tr>
+      <tr><td>seekdb 检索</td><td id="t-search">—</td></tr>
+      <tr><td><strong>端到端（点击→结果）</strong></td><td id="t-e2e">—</td></tr>
+    </table>
+  </div>
+</div>
+
+<script type="module" src="./app.js"></script>
+</body>
+</html>
