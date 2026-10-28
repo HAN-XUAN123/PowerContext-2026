@@ -51,9 +51,14 @@ docker exec -it seekdb mysql -h127.0.0.1 -P2881 -uroot -e "CREATE DATABASE IF NO
 
 ```bash
 cd server
-npm install          # 或 pnpm install
-node index.js        # http://127.0.0.1:8787
+npm install                       # 或 pnpm install
+node ../scripts/sync-vendor.mjs   # 把 Transformers.js 复制到 web/vendor/
+node ../scripts/fetch-model.mjs   # 从 hf-mirror 下载 int8 模型到 web/models/（22.7 MB）
+node index.js                     # http://127.0.0.1:8787
 ```
+
+> 仓库不提交 `web/vendor/`（第三方产物，且会被 GitHub secret 扫描误报）与 `web/models/`（22.7 MB 权重），
+> 两者都由上面两个脚本生成；也可以直接双击根目录的 `start.cmd`（Windows）。
 
 浏览器打开 `http://127.0.0.1:8787`（页面由同一服务托管，无需单独前端 dev server）。
 
